@@ -1,13 +1,13 @@
-train_datasets = {"ESD":"/home/soumyad/emoconv/ESD/train"}
-val_datasets = {"ESD":"/home/soumyad/emoconv/ESD/val"}
-test_datasets = {"ESD":"/home/soumyad/emoconv/ESD/test"}
+train_datasets = {"ESD":"D:/ZEST/ZEST/code/data/train"}
+val_datasets = {"ESD":"D:/ZEST/ZEST/code/data/val"}
+test_datasets = {"ESD":"D:/ZEST/ZEST/code/data/test"}
 
 
-train_tokens_orig = {"ESD":"/ZEST/code/train_esd.txt"}
-val_tokens_orig = {"ESD":"/ZEST/code/val_esd.txt"}
-test_tokens_orig = {"ESD":"/ZEST/code/test_esd.txt"}
+train_tokens_orig = {"ESD":"D:/ZEST/ZEST/code/train_esd.txt"}
+val_tokens_orig = {"ESD":"D:/ZEST/ZEST/code/val_esd.txt"}
+test_tokens_orig = {"ESD":"D:/ZEST/ZEST/code/test_esd.txt"}
 
-f0_file = "ZEST/code/f0.pickle"
+f0_file = "D:/ZEST/ZEST/code/f0.pickle"
 hparams = {
         ################################
         # Experiment Parameters        #

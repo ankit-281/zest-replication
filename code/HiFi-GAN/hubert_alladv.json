@@ -1,6 +1,6 @@
 {
-    "input_training_file": "/ZEST/code/train_esd.txt",
-    "input_validation_file": "/ZEST/code/val_esd.txt",
+    "input_training_file": "D:/ZEST/ZEST/code/train_esd.txt",
+    "input_validation_file": "D:/ZEST/ZEST/code/val_esd.txt",
 
     "resblock": "1",
     "num_gpus": 0,
@@ -32,7 +32,7 @@
     "hop_size": 256,
     "win_size": 1024,
 
-    "f0_stats": "datasets/ESD/esd_f0_stats.pth",
+    "f0_stats": "D:/ZEST/ZEST/code/esd_f0_stats.pth",
     "f0_normalize": true,
     "f0_feats": false,
     "f0_median": false,

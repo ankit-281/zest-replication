@@ -17,11 +17,11 @@ import torch.nn.functional as F
 from config import hparams, f0_stats
 #from config import train_tokens, val_tokens, test_tokens, f0_file
 from config import train_tokens_orig, val_tokens_orig, test_tokens_orig, f0_file
-import pickle5 as pickle
+import pickle
 import ast
 import math
 from torch.autograd import Function
-from pitch_convert import crema_dataset
+from pitch_attention_adv import create_dataset
 
 #Logger set
 logging.basicConfig(
@@ -219,4 +219,4 @@ def train():
                 np.save(os.path.join(wav2vec_feats_folder, target_file_name), embedded[ind, :].cpu().detach().numpy()) 
 
 if __name__ == "__main__":
-    crema()
+    train()

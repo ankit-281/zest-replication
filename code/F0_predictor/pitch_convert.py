@@ -15,7 +15,7 @@ from tqdm import tqdm
 import random
 import torch.nn.functional as F
 from config import hparams
-import pickle5 as pickle
+import pickle
 import ast
 from pitch_attention_adv import create_dataset
 from torch.autograd import Function

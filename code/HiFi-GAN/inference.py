@@ -189,7 +189,7 @@ def inference(item_index):
         
         if h.get('multispkr', None) and a.convert:
             print("In conversion")
-            reference_files = os.listdir("/folder/to/ESD/test/wavs")
+            reference_files = os.listdir("D:/ZEST/ZEST/code/data/test")
             #Change line 194 for setting same/different source/reference speaker
             reference_files = [x for x in reference_files if x[:4] != fname_out_name[:4]]
             reference_files = [x for x in reference_files if int(x[5:11]) >= 350]
@@ -200,9 +200,9 @@ def inference(item_index):
             
             for i, filename in enumerate(reference_files):
                 print(i, filename)
-                emo_embed = np.load("/ZEST/code/F0_predictor/wav2vec_feats/" + filename.replace(".wav", ".npy"))
+                emo_embed = np.load("D:/ZEST/ZEST/code/F0_predictor/wav2vec_feats/" + filename.replace(".wav", ".npy"))
                 feats = {}
-                f0 = np.load("/ZEST/code/F0_predictor/pred_DSDT_f0" + fname_out_name + filename.replace(".wav", ".npy"))
+                f0 = np.load("D:/ZEST/ZEST/code/F0_predictor/pred_DSDT_f0/" + fname_out_name + filename.replace(".wav", ".npy"))
                 f0 = f0.astype(np.float32)
                 trg_f0 = f0
                 new_f0 = torch.tensor(f0)
@@ -223,7 +223,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--code_file', default=None)
-    parser.add_argument('--input_code_file', default="/ZEST/code/test_esd.txt")
+    parser.add_argument('--input_code_file', default="D:/ZEST/ZEST/code/test_esd.txt")
     parser.add_argument('--output_dir', default='DSDT')
     parser.add_argument('--emo_folder', default='')
     parser.add_argument('--pitch_folder', default='')

@@ -19,7 +19,7 @@ import torch.utils.data
 from librosa.filters import mel as librosa_mel_fn
 from librosa.util import normalize
 import os
-import pickle5 as pickle
+import pickle
 
 MAX_WAV_VALUE = 32768.0
 
@@ -288,7 +288,7 @@ class CodeDataset(torch.utils.data.Dataset):
             f0 = torch.tensor(pitch).unsqueeze(0).unsqueeze(0)
             feats['f0'] = f0.squeeze(0)
         if self.multispkr:
-            feats['spkr'] = np.load("/ZEST/code/EASE/EASE_embeddings/" + emo_file_name)
+            feats['spkr'] = np.load("D:/ZEST/ZEST/code/EASE/EASE_embeddings/" + emo_file_name)
 
         if self.spkr_average:
             with open('speakers.pkl', 'rb') as handle:

@@ -21,7 +21,7 @@ class BottleneckBlock(nn.Module):
         self.init = False
         self.k_sum = None
         self.k_elem = None
-        self.register_buffer('k', t.zeros(self.k_bins, self.emb_width).cuda())
+        self.register_buffer('k', t.zeros(self.k_bins, self.emb_width).to(t.device('cuda') if t.cuda.is_available() else t.device('cpu')))
 
     def _tile(self, x):
         d, ew = x.shape
@@ -243,7 +243,7 @@ class NoBottleneck(nn.Module):
         return zs
 
     def forward(self, xs):
-        zero = t.zeros(()).cuda()
+        zero = t.zeros(()).to(t.device('cuda') if t.cuda.is_available() else t.device('cpu'))
         commit_losses = [zero for _ in range(self.levels)]
         metrics = [dict(entropy=zero, usage=zero, used_curr=zero, pn=zero, dk=zero) for _ in range(self.levels)]
         return xs, xs, commit_losses, metrics

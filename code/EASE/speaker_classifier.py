@@ -12,7 +12,7 @@ from sklearn.metrics import f1_score, accuracy_score
 from tqdm import tqdm
 import random
 import torch.nn.functional as F
-import pickle5 as pickle
+import pickle
 import ast
 from torch.autograd import Function
 
@@ -117,13 +117,13 @@ class SpeakerModel(nn.Module):
         return out, emo_out, feat
 
 def create_dataset(mode, bs=32):
-    speaker_folder = "/folder/to/x-vectors"
+    speaker_folder = "D:/ZEST/ZEST/code/x-vectors"
     if mode == 'train':
-        folder = "/folder/to/train/audio/files"
+        folder = "D:/ZEST/ZEST/code/data/train"
     elif mode == 'val':
-        folder = "/folder/to/validation/audio/files"
+        folder = "D:/ZEST/ZEST/code/data/val"
     elif mode =="test":
-        folder = "/folder/to/test/audio/files"
+        folder = "D:/ZEST/ZEST/code/data/test"
     dataset = MyDataset(folder, speaker_folder)
     loader = DataLoader(dataset,
                     batch_size=bs,

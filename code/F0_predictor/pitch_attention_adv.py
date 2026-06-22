@@ -15,8 +15,8 @@ from tqdm import tqdm
 import random
 import torch.nn.functional as F
 from config import hparams
-from config import train_tokens_orig, val_tokens_orig, test_tokens_orig, f0_file
-import pickle5 as pickle
+from config import train_tokens_orig, val_tokens_orig, test_tokens_orig, f0_file, train_datasets, val_datasets, test_datasets
+import pickle
 import ast
 import math
 from torch.autograd import Function
@@ -81,7 +81,7 @@ class MyDataset(Dataset):
         speaker_dict = {}
         for ind in range(11, 21):
             speaker_dict["00"+str(ind)] = ind-11
-        speaker_feature = np.load(os.path.join("/folder/to/EASE/embeddings", file_name.replace(".wav", ".npy")))
+        speaker_feature = np.load(os.path.join("D:/ZEST/ZEST/code/EASE/EASE_embeddings", file_name.replace(".wav", ".npy")))
 
         return speaker_feature, speaker_dict[spkr_name]
         
@@ -264,13 +264,13 @@ def custom_collate(data):
 
 def create_dataset(mode, bs=24):
     if mode == 'train':
-        folder = "/folder/to/train/audio/files"
+        folder = train_datasets["ESD"]
         token_file = train_tokens_orig["ESD"]
     elif mode == 'val':
-        folder = "/folder/to/validation/audio/files"
+        folder = val_datasets["ESD"]
         token_file = val_tokens_orig["ESD"]
     else:
-        folder = "/folder/to/test/audio/files"
+        folder = test_datasets["ESD"]
         token_file = test_tokens_orig["ESD"]
     dataset = MyDataset(folder, token_file)
     loader = DataLoader(dataset,
