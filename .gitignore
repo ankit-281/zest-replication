@@ -169,3 +169,4 @@ code/F0_predictor/pred_DSDT_f0/
 *.npy
 *.pth
 *.pickle
+*.zip
