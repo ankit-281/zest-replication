@@ -58,7 +58,9 @@ class MyDataset(Dataset):
                 d = ast.literal_eval(l)
                 name, tokens = d["audio"], d["hubert"]
                 tokens_l = tokens.split(" ")
-                self.tokens[name.split(os.sep)[-1]] = np.array(tokens_l).astype(int)
+                # Handle forward slashes from the txt file on Windows
+                filename = os.path.basename(name.replace("\\", "/"))
+                self.tokens[filename] = np.array(tokens_l).astype(int)
 
     def __len__(self):
         return len(self.wav_files) 

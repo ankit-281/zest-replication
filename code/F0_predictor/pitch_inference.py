@@ -179,7 +179,7 @@ def get_f0():
     os.makedirs("f0_contours", exist_ok=True)
     
     model = PitchModel(hparams)
-    model = torch.load('f0_predictor.pth', map_location=device)
+    model.load_state_dict(torch.load('f0_predictor_state.pth', map_location=device))
     model.to(device)
     model.eval()
     loader = create_dataset("test", 1)

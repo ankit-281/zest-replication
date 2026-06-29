@@ -173,7 +173,7 @@ def get_f0():
     os.makedirs("pred_DSDT_f0", exist_ok=True)
     test_loader = create_dataset("test", 1)
     model = PitchModel(hparams)
-    model = torch.load('f0_predictor.pth', map_location=device)
+    model.load_state_dict(torch.load('f0_predictor_state.pth', map_location=device))
     model.to(device)
     model.eval()
     sources = ["0011_000021.wav", "0012_000022.wav", "0013_000025.wav",
