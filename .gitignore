@@ -170,3 +170,4 @@ code/F0_predictor/pred_DSDT_f0/
 *.pth
 *.pickle
 *.zip
+DSDT/

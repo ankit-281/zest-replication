@@ -51,7 +51,7 @@ def mel_spectrogram(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin,
 
     global mel_basis, hann_window
     if fmax not in mel_basis:
-        mel = librosa_mel_fn(sampling_rate, n_fft, num_mels, fmin, fmax)
+        mel = librosa_mel_fn(sr=sampling_rate, n_fft=n_fft, n_mels=num_mels, fmin=fmin, fmax=fmax)
         mel_basis[str(fmax)+'_'+str(y.device)] = torch.from_numpy(mel).float().to(y.device)
         hann_window[str(y.device)] = torch.hann_window(win_size).to(y.device)
 
@@ -107,13 +107,9 @@ hann_window = {}
 def parse_manifest(manifest):
     audio_files = []
     codes = []
-    #reqd_files = ["0011_000021", "0012_000022", "0013_000025", "0014_000032", "0015_000034", "0016_000035", "0017_000038", "0018_000043", "0019_000023", "0020_000047"]
-    #for f in reqd_files[1:]:
+    manifest_parent = Path(manifest).parent
     with open(manifest) as info:
-        
         for line in info.readlines():
-            # if f not in line:
-            #     continue
             if line[0] == '{':
                 sample = eval(line.strip())
                 if 'cpc_km100' in sample:
@@ -126,9 +122,13 @@ def parse_manifest(manifest):
                 codes += [torch.LongTensor(
                     [int(x) for x in sample[k].split(' ')]
                 ).numpy()]
-                audio_files += [Path(sample["audio"])]
+                orig_path = Path(sample["audio"])
+                real_path = manifest_parent / "data" / orig_path.parts[-2] / orig_path.parts[-1]
+                audio_files += [real_path]
             else:
-                audio_files += [Path(line.strip())]
+                orig_path = Path(line.strip())
+                real_path = manifest_parent / "data" / orig_path.parts[-2] / orig_path.parts[-1]
+                audio_files += [real_path]
 
     return audio_files, codes
 
@@ -229,8 +229,8 @@ class CodeDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         filename = self.audio_files[index]
         emo_file_name = str(filename).split(os.sep)[-1].replace(".wav", ".npy")
-        emo_embed = np.load(self.emo_folder + emo_file_name)
-        pitch = np.load(self.pitch_folder + emo_file_name)
+        emo_embed = np.load(os.path.join(self.emo_folder, emo_file_name))
+        pitch = np.load(os.path.join(self.pitch_folder, emo_file_name))
         if self._cache_ref_count == 0:
             audio, sampling_rate = load_audio(filename)
             if sampling_rate != self.sampling_rate:

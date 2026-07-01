@@ -21,9 +21,9 @@ import numpy as np
 import torch
 from scipy.io.wavfile import write
 import soundfile as sf
-from dataset_f0recon import CodeDataset, parse_manifest, mel_spectrogram, \
+from dataset import CodeDataset, parse_manifest, mel_spectrogram, \
     MAX_WAV_VALUE, load_audio
-from dataset_f0recon import get_yaapt_f0
+from dataset import get_yaapt_f0
 from utils import AttrDict
 from models import CodeGenerator
 import amfm_decompy.basic_tools as basic
@@ -42,7 +42,7 @@ def progbar(i, n, size=16):
     done = (i * size) // n
     bar = ''
     for i in range(size):
-        bar += '█' if i <= done else '░'
+        bar += '#' if i <= done else '-'
     return bar
 
 
@@ -148,7 +148,7 @@ def init_worker(queue, arguments):
     generator.remove_weight_norm()
 
     # fix seed
-    seed = 52 + idx
+    seed = 52
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -189,20 +189,17 @@ def inference(item_index):
         
         if h.get('multispkr', None) and a.convert:
             print("In conversion")
-            reference_files = os.listdir("D:/ZEST/ZEST/code/data/test")
-            #Change line 194 for setting same/different source/reference speaker
+            reference_files = ["0011_000021.wav", "0012_000022.wav", "0013_000025.wav",
+                               "0014_000032.wav", "0015_000034.wav", "0016_000035.wav",
+                               "0017_000038.wav", "0018_000043.wav", "0019_000023.wav",
+                               "0020_000047.wav"]
             reference_files = [x for x in reference_files if x[:4] != fname_out_name[:4]]
-            reference_files = [x for x in reference_files if int(x[5:11]) >= 350]
-            reference_files = [x for x in reference_files if ".wav" in x]
-            source_num = int(fname_out_name[5:11])
-            #Change line 199 for setting same/different source/reference utterance
-            reference_files = [x for x in reference_files if (int(x[5:11])-source_num)%350!=0]
             
             for i, filename in enumerate(reference_files):
                 print(i, filename)
                 emo_embed = np.load("D:/ZEST/ZEST/code/F0_predictor/wav2vec_feats/" + filename.replace(".wav", ".npy"))
                 feats = {}
-                f0 = np.load("D:/ZEST/ZEST/code/F0_predictor/pred_DSDT_f0/" + fname_out_name + filename.replace(".wav", ".npy"))
+                f0 = np.load("D:/ZEST/ZEST/code/F0_predictor/pred_DSDT_f0/" + fname_out_name + ".wav" + filename.replace(".wav", ".npy"))
                 f0 = f0.astype(np.float32)
                 trg_f0 = f0
                 new_f0 = torch.tensor(f0)
@@ -244,7 +241,10 @@ def main():
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    ids = list(range(1))
+    if torch.cuda.is_available():
+        ids = [torch.device('cuda:0')]
+    else:
+        ids = [torch.device('cpu')]
     manager = Manager()
     idQueue = manager.Queue()
     for i in ids:
@@ -286,7 +286,10 @@ def main():
                               pad=a.pad, pitch_folder=a.pitch_folder, emo_folder=a.emo_folder)
 
     if a.debug:
-        ids = list(range(1))
+        if torch.cuda.is_available():
+            ids = [torch.device('cuda:0')]
+        else:
+            ids = [torch.device('cpu')]
         import queue
         idQueue = queue.Queue()
         for i in ids:
