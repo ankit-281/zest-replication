@@ -1,0 +1,240 @@
+# Replace HiFi-GAN with Frozen FACodec Decoder in ZEST Pipeline
+
+## Background
+
+The current ZEST pipeline uses a trained HiFi-GAN `CodeGenerator` as its final waveform synthesis stage. The generator takes concatenated HuBERT codes, F0 contours, speaker embeddings (EASE), and wav2vec emotion features, and produces a waveform via adversarial training (with `MultiPeriodDiscriminator` + `MultiScaleDiscriminator`).
+
+The goal is to replace this entire HiFi-GAN stage with a **frozen pretrained FACodec decoder** from Amphion (NaturalSpeech3), connected via a lightweight **FeatureAdapter** MLP.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Fundamental Representation Mismatch**: FACodec's decoder expects **quantized codec latents** (outputs from its own encoder → VQ pipeline), not arbitrary continuous feature embeddings. The ZEST features (HuBERT tokens, wav2vec emotion embeddings, EASE speaker embeddings, F0 contours) live in a completely different representation space than FACodec's internal codebook latents. A simple MLP cannot bridge this gap without **training** — the adapter must be trained on paired data (ZEST features → ground-truth FACodec latents) before it can produce meaningful waveforms. This plan implements the full infrastructure, but **the adapter will produce random noise until trained**.
+
+> [!WARNING]
+> **The FACodec decoder requires `vq_post_emb` (post-VQ embeddings, shape `[B, 256, T]`) and `spk_embs` (timbre embeddings extracted by FACodec's own encoder pipeline) as inputs to its `inference()` method.** The FeatureAdapter will project ZEST features to match these expected dimensions, but the semantic content will not align without supervised training of the adapter.
+
+## Open Questions
+
+> [!IMPORTANT]
+> 1. **Training the adapter**: Do you want the plan to include a training loop for the FeatureAdapter (using L1/L2 loss between adapter output and ground-truth FACodec latents extracted by encoding real audio)? Or is the current scope limited to architecture/inference scaffolding only?
+> 2. **FACodec version**: The official Amphion repository has both V1 and V2 of FACodec. This plan uses V1 (`FACodecEncoder`/`FACodecDecoder`) from `amphion/naturalspeech3_facodec`. Confirm this is acceptable.
+> 3. **PyTorch version**: The current `requirements.txt` specifies `torch==2.2.0+cpu`. FACodec may require CUDA for reasonable inference speed. Should we keep CPU-only compatibility?
+
+---
+
+## Proposed Changes
+
+### Feature Dimension Analysis
+
+From the existing codebase, the ZEST features arriving at the HiFi-GAN stage are:
+
+| Feature | Source | Dimension | Shape at HiFi-GAN input |
+|---------|--------|-----------|------------------------|
+| HuBERT codes | `CodeDataset` → embedding lookup | 128-dim (after `UnitEncoder`) | `[B, 128, T_code]` |
+| F0 contour | F0 predictor → `F0Encoder` | 128-dim (after encoding) | `[B, 128, T_f0]` |
+| EASE speaker embedding | `EASE_embeddings/*.npy` | 128-dim (after EASE classifier) | `[B, 128, T_code]` (broadcast) |
+| wav2vec emotion embedding | `wav2vec_feats/*.npy` | 128-dim | `[B, 128, T_code]` (broadcast) |
+| **Total concatenated** | | **512-dim** (`model_in_dim` in config) | `[B, 512, T_code]` |
+
+FACodec decoder expects:
+- `vq_post_emb`: `[B, 256, T_codec]` — post-quantization embedding
+- `spk_embs`: `[B, 256]` — timbre/speaker embedding (global, not time-varying)
+
+---
+
+### Component 1: FACodec Wrapper
+
+#### [NEW] [facodec_wrapper.py](file:///d:/ZEST/ZEST/code/HiFi-GAN/facodec_wrapper.py)
+
+Wraps the official Amphion FACodec decoder:
+- Downloads pretrained weights from HuggingFace (`amphion/naturalspeech3_facodec`)
+- Loads `FACodecDecoder` with the official architecture parameters
+- Freezes all parameters
+- Exposes a clean `decode(vq_post_emb, spk_embs) → waveform` interface
+- Also loads `FACodecEncoder` for optional ground-truth latent extraction (useful for future adapter training)
+
+```python
+class FACodecWrapper(nn.Module):
+    def __init__(self, device="cpu"):
+        # Initialize FACodecDecoder with official params
+        # Download & load pretrained weights
+        # Freeze all parameters
+    
+    def decode(self, vq_post_emb, spk_embs):
+        # vq_post_emb: [B, 256, T]
+        # spk_embs: [B, 256]
+        # Returns: waveform [B, 1, T_audio]
+    
+    def encode(self, audio):
+        # Optional: encode audio through FACodecEncoder
+        # Returns: vq_post_emb, spk_embs (ground truth targets for adapter training)
+```
+
+---
+
+### Component 2: Feature Adapter
+
+#### [NEW] [feature_adapter.py](file:///d:/ZEST/ZEST/code/HiFi-GAN/feature_adapter.py)
+
+Lightweight MLP that maps ZEST features → FACodec latent space:
+
+```python
+class FeatureAdapter(nn.Module):
+    def __init__(self, content_dim, emotion_dim, speaker_dim, f0_dim, 
+                 facodec_latent_dim=256, facodec_spk_dim=256, hidden_dim=512):
+        # Temporal projection: concat → Linear → ReLU → Linear → facodec_latent_dim
+        # Speaker projection: speaker_dim → Linear → ReLU → Linear → facodec_spk_dim
+    
+    def forward(self, content_features, emotion_features, speaker_embedding, f0_features):
+        # 1. Upsample/align all temporal features to same length
+        # 2. Concatenate along channel dim
+        # 3. Project through temporal MLP → vq_post_emb [B, 256, T]
+        # 4. Project speaker embedding → spk_embs [B, 256]
+        # Returns: (vq_post_emb, spk_embs)
+```
+
+Key design decisions:
+- **Modular input interface**: Uses named arguments (`content_features`, `emotion_features`, `speaker_embedding`, `f0_features`) so any upstream extractor can be swapped
+- **Dynamic dimension inspection**: Reads input dimensions at init or first forward pass
+- **Separate speaker projection**: FACodec expects a global speaker embedding, separate from temporal features
+
+---
+
+### Component 3: Decoder Inference Script
+
+#### [NEW] [decoder_inference.py](file:///d:/ZEST/ZEST/code/HiFi-GAN/decoder_inference.py)
+
+Standalone inference script that replaces the HiFi-GAN `inference.py` flow:
+
+```python
+def run_inference(args):
+    # 1. Load dataset (reuses existing CodeDataset — unchanged)
+    # 2. Load FeatureAdapter (trained weights)
+    # 3. Load FACodecWrapper (frozen pretrained)
+    # 4. For each sample:
+    #    a. Extract features from dataset (same as before)
+    #    b. Separate features into content/emotion/speaker/f0
+    #    c. adapter(content, emotion, speaker, f0) → (vq_post_emb, spk_embs)
+    #    d. facodec.decode(vq_post_emb, spk_embs) → waveform
+    #    e. Save waveform
+```
+
+---
+
+### Component 4: Modified Inference Script
+
+#### [MODIFY] [inference.py](file:///d:/ZEST/ZEST/code/HiFi-GAN/inference.py)
+
+Minimal modifications to the existing inference.py:
+- Replace `CodeGenerator` import with `FeatureAdapter` + `FACodecWrapper`
+- Replace `generate()` function to use adapter → decoder pipeline
+- Keep all dataset loading, argument parsing, and conversion logic intact
+- The `--checkpoint_file` argument will now point to the adapter weights instead of HiFi-GAN generator weights
+
+---
+
+### Files NOT Modified
+
+The following files remain **completely unchanged**:
+- `code/EASE/get_speaker_embedding.py` — speaker embedding extraction
+- `code/EASE/speaker_classifier.py` — EASE training
+- `code/F0_predictor/pitch_attention_adv.py` — F0 predictor model
+- `code/F0_predictor/pitch_inference.py` — F0 inference
+- `code/F0_predictor/pitch_convert.py` — zero-shot pitch conversion
+- `code/F0_predictor/get_wav2vec_feats.py` — wav2vec feature extraction
+- `code/F0_predictor/config.py` — hyperparameters
+- `code/HiFi-GAN/dataset.py` — dataset loading (reused as-is)
+- `code/HiFi-GAN/modules/` — kept for backward compatibility but not imported by new code
+- `code/HiFi-GAN/utils.py` — utility functions (AttrDict still used)
+
+### Files Superseded (Not Deleted, But No Longer Used)
+
+- `code/HiFi-GAN/train.py` — GAN training loop (no longer needed; adapter training is separate)
+- `code/HiFi-GAN/models.py` — Generator/Discriminator definitions (not imported by new inference)
+
+---
+
+## Summary of New/Modified Files
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `code/HiFi-GAN/facodec_wrapper.py` | **NEW** | Frozen FACodec decoder wrapper |
+| `code/HiFi-GAN/feature_adapter.py` | **NEW** | MLP adapter: ZEST features → FACodec latents |
+| `code/HiFi-GAN/decoder_inference.py` | **NEW** | Standalone inference script using adapter + FACodec |
+| `code/HiFi-GAN/inference.py` | **MODIFY** | Updated to use adapter + FACodec instead of CodeGenerator |
+| `code/requirements.txt` | **MODIFY** | Add `huggingface_hub` dependency |
+
+---
+
+## Required Dependencies
+
+```
+huggingface_hub  # For downloading FACodec pretrained weights
+```
+
+The FACodec model code will be vendored directly (the `FACodecEncoder` and `FACodecDecoder` classes from Amphion) rather than requiring the full Amphion installation, since Amphion is not pip-installable as a standalone package. The vendored files will be placed in `code/HiFi-GAN/facodec/`.
+
+---
+
+## Installation Steps
+
+```powershell
+# 1. Install additional dependency
+cd d:\ZEST\ZEST\code
+venv\Scripts\pip.exe install huggingface_hub
+
+# 2. FACodec pretrained weights will be auto-downloaded on first run
+#    from huggingface.co/amphion/naturalspeech3_facodec
+#    Cached to ~/.cache/huggingface/hub/
+```
+
+---
+
+## Inference Commands
+
+```powershell
+# New standalone inference (recommended)
+cd d:\ZEST\ZEST\code\HiFi-GAN
+..\..\venv\Scripts\python.exe decoder_inference.py \
+    --adapter_checkpoint adapter_weights.pth \
+    --pitch_folder ../F0_predictor/f0_contours \
+    --emo_folder ../F0_predictor/wav2vec_feats \
+    --convert --debug
+
+# Or modified original inference.py (backward-compatible CLI)
+..\..\venv\Scripts\python.exe inference.py \
+    --checkpoint_file adapter_weights.pth \
+    --pitch_folder ../F0_predictor/f0_contours \
+    --emo_folder ../F0_predictor/wav2vec_feats \
+    --convert --debug --use_facodec
+```
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Module import test: verify `feature_adapter.py`, `facodec_wrapper.py`, `decoder_inference.py` import without errors
+- Shape test: verify adapter output matches FACodec expected input dimensions
+- Forward pass test: verify end-to-end pipeline produces a waveform tensor of correct shape
+
+### Manual Verification
+- Run inference on a single test sample and verify a `.wav` file is produced
+- Compare output sample rate (should be 16kHz, matching both ZEST and FACodec)
+
+---
+
+## Architectural Incompatibilities & Assumptions
+
+> [!CAUTION]
+> **Critical Mismatch**: FACodec's decoder is designed to reconstruct speech from its own VQ codebook latents, which are produced by FACodec's encoder + quantizer. The ZEST pipeline produces HuBERT-based discrete codes, wav2vec emotion embeddings, EASE speaker features, and predicted F0 — none of which share the same latent space as FACodec's internal representations. The FeatureAdapter MLP will need to be **trained** on paired (ZEST features, FACodec latents) data to learn this mapping. Without training, the decoder will produce noise/artifacts.
+
+### Assumptions Made
+
+1. **FACodec V1** is used (not V2), from the `amphion/naturalspeech3_facodec` HuggingFace repo
+2. **16kHz sample rate** — both ZEST and FACodec operate at 16kHz
+3. **The adapter MLP is a trainable component** — the plan provides the architecture but it must be trained before producing meaningful output
+4. **FACodec model code is vendored** — since Amphion isn't pip-installable, we copy the necessary model definition files
+5. **Existing `CodeDataset`** is reused without modification for loading features
+6. **HiFi-GAN files are preserved** (not deleted) for backward compatibility, but the new inference path does not use them

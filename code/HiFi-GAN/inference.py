@@ -30,6 +30,14 @@ import amfm_decompy.basic_tools as basic
 import amfm_decompy.pYAAPT as pYAAPT
 from librosa.util import normalize
 
+# --- FACodec imports (used only when --use_facodec is passed) ---
+try:
+    from feature_adapter import FeatureAdapter, load_adapter
+    from facodec_wrapper import FACodecWrapper, FACODEC_SAMPLE_RATE
+    FACODEC_AVAILABLE = True
+except ImportError:
+    FACODEC_AVAILABLE = False
+
 
 h = None
 device = None
@@ -224,7 +232,8 @@ def main():
     parser.add_argument('--output_dir', default='DSDT')
     parser.add_argument('--emo_folder', default='')
     parser.add_argument('--pitch_folder', default='')
-    parser.add_argument('--checkpoint_file', required=True)
+    parser.add_argument('--checkpoint_file', default=None,
+                        help='HiFi-GAN checkpoint (required unless --use_facodec)')
     parser.add_argument('--f0-stats', type=Path)
     parser.add_argument('--vc', action='store_true')
     parser.add_argument('--convert', action='store_true')
@@ -234,7 +243,51 @@ def main():
     parser.add_argument('--parts', action='store_true')
     parser.add_argument('--unseen-f0', type=Path)
     parser.add_argument('-n', type=int, default=1500)
+    parser.add_argument('--use_facodec', action='store_true',
+                        help='Use FACodec decoder instead of HiFi-GAN')
+    parser.add_argument('--adapter_checkpoint', default=None,
+                        help='Path to trained FeatureAdapter weights (required with --use_facodec)')
+    parser.add_argument('--facodec_weights', default=None,
+                        help='Dir with FACodec pretrained weights')
     a = parser.parse_args()
+
+    # --- FACodec mode: delegate to decoder_inference ---
+    if a.use_facodec:
+        if not FACODEC_AVAILABLE:
+            print("[ERROR] FACodec modules not found. Run 'python setup_facodec.py' first.")
+            return
+        if a.adapter_checkpoint is None:
+            print("[ERROR] --adapter_checkpoint is required when using --use_facodec")
+            return
+        # Re-invoke via decoder_inference
+        import decoder_inference
+        sys.argv = [
+            'decoder_inference.py',
+            '--adapter_checkpoint', a.adapter_checkpoint,
+            '--input_code_file', a.input_code_file,
+            '--output_dir', a.output_dir,
+            '--emo_folder', a.emo_folder,
+            '--pitch_folder', a.pitch_folder,
+        ]
+        if a.convert:
+            sys.argv.append('--convert')
+        if a.debug:
+            sys.argv.append('--debug')
+        if a.parts:
+            sys.argv.append('--parts')
+        if a.facodec_weights:
+            sys.argv.extend(['--facodec_weights', a.facodec_weights])
+        if a.pad:
+            sys.argv.extend(['--pad', str(a.pad)])
+        sys.argv.extend(['-n', str(a.n)])
+        decoder_inference.main()
+        return
+
+    # --- Original HiFi-GAN path: checkpoint_file is required ---
+    if a.checkpoint_file is None:
+        print("[ERROR] --checkpoint_file is required for HiFi-GAN mode.")
+        print("       Use --use_facodec for FACodec mode instead.")
+        return
 
     seed = 52
     random.seed(seed)

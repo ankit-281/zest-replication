@@ -59,3 +59,4 @@ tqdm==4.66.1
 transformers==4.35.2
 typing_extensions==4.15.0
 urllib3==2.7.0
+huggingface_hub
